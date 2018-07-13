@@ -74,20 +74,6 @@ public class Student {
         this.mobile = mobile;
     }
 
-    @Override
-    public boolean equals(Object obj) {
-        if (this == obj)
-            return true;
-        if (obj == null || getClass() != obj.getClass())
-            return false;
-        Student student = (Student) obj;
-        return Objects.equal(id, student.id) &&
-                Objects.equal(name, student.name) &&
-                Objects.equal(rollNo, student.rollNo) &&
-                Objects.equal(dob, student.dob) &&
-                Objects.equal(mobile, student.mobile);
-    }
-
     @NonNull
     public String getId() {
         return id;
@@ -144,6 +130,20 @@ public class Student {
     public String getLastName() {
         String[] n = name.split(" ");
         return n[n.length - 1];
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj)
+            return true;
+        if (obj == null || getClass() != obj.getClass())
+            return false;
+        Student student = (Student) obj;
+        return Objects.equal(id, student.id) &&
+                Objects.equal(name, student.name) &&
+                Objects.equal(rollNo, student.rollNo) &&
+                Objects.equal(dob, student.dob) &&
+                Objects.equal(mobile, student.mobile);
     }
 
     @Override
