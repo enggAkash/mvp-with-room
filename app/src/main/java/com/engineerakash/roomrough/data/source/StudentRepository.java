@@ -2,13 +2,16 @@ package com.engineerakash.roomrough.data.source;
 
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.util.Log;
 
 import com.engineerakash.roomrough.data.Student;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
@@ -19,6 +22,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
  * is empty, then it will fetch data from remote data source.
  */
 public class StudentRepository implements StudentDataSource {
+    private static final String TAG = "StudentRepository";
 
     private static StudentRepository INSTANCE = null;
 
@@ -156,44 +160,209 @@ public class StudentRepository implements StudentDataSource {
     }
 
     @Override
-    public void saveStudent(@NonNull Student student, @NonNull SaveStudentCallback saveStudentCallback) {
+    public void saveStudent(@NonNull final Student student, @NonNull final SaveStudentCallback saveStudentCallback) {
+        checkNotNull(student);
 
+        mStudentLocalDataSource.saveStudent(student, new SaveStudentCallback() {
+            @Override
+            public void onStudentSavedSuccessfully() {
+                mStudentRemoteDataSource.saveStudent(student, new SaveStudentCallback() {
+                    @Override
+                    public void onStudentSavedSuccessfully() {
+                        // Do in memory cache update to keep the app UI up to date
+                        if (mCachedStudents == null)
+                            mCachedStudents = new LinkedHashMap<>();
+
+                        mCachedStudents.put(student.getId(), student);
+
+                        saveStudentCallback.onStudentSavedSuccessfully();
+                    }
+
+                    @Override
+                    public void onFailedToSaveStudent() {
+                        saveStudentCallback.onFailedToSaveStudent();
+                    }
+                });
+            }
+
+            @Override
+            public void onFailedToSaveStudent() {
+                saveStudentCallback.onFailedToSaveStudent();
+            }
+        });
+
+        // Do in memory cache update to keep the app UI up to date
+        if (mCachedStudents == null)
+            mCachedStudents = new LinkedHashMap<>();
+
+        mCachedStudents.put(student.getId(), student);
     }
 
     @Override
-    public void deleteAllStudent(@NonNull DeleteAllStudentCallback deleteAllStudentCallback) {
+    public void deleteAllStudent(@NonNull final DeleteAllStudentCallback deleteAllStudentCallback) {
+        mStudentLocalDataSource.deleteAllStudent(new DeleteAllStudentCallback() {
+            @Override
+            public void onAllStudentDeletedSuccessfully() {
+                mStudentRemoteDataSource.deleteAllStudent(new DeleteAllStudentCallback() {
+                    @Override
+                    public void onAllStudentDeletedSuccessfully() {
+                        deleteAllStudentCallback.onAllStudentDeletedSuccessfully();
+                    }
 
+                    @Override
+                    public void onFailedToDeleteAllStudent() {
+                        deleteAllStudentCallback.onFailedToDeleteAllStudent();
+                    }
+                });
+            }
+
+            @Override
+            public void onFailedToDeleteAllStudent() {
+                deleteAllStudentCallback.onFailedToDeleteAllStudent();
+            }
+        });
     }
 
     @Override
-    public void deleteStudent(@NonNull String studentId, @NonNull DeleteStudentCallback deleteStudentCallback) {
+    public void deleteStudent(@NonNull final String studentId, @NonNull final DeleteStudentCallback deleteStudentCallback) {
+        checkNotNull(studentId);
 
+        mStudentLocalDataSource.deleteStudent(studentId, new DeleteStudentCallback() {
+            @Override
+            public void onStudentDeletedSuccessfully() {
+                mStudentRemoteDataSource.deleteStudent(studentId, new DeleteStudentCallback() {
+                    @Override
+                    public void onStudentDeletedSuccessfully() {
+
+                        // Update the cache data to keep the app UI up to date
+                        if (mCachedStudents == null)
+                            mCachedStudents = new LinkedHashMap<>();
+                        Iterator<Map.Entry<String, Student>> iterator = mCachedStudents.entrySet().iterator();
+
+                        while (iterator.hasNext()) {
+                            Student student = iterator.next().getValue();
+                            iterator.remove();
+                            if (student.getId().equals(studentId))
+                                iterator.remove();
+                        }
+
+                        deleteStudentCallback.onStudentDeletedSuccessfully();
+                    }
+
+                    @Override
+                    public void onFailedToDeleteStudent() {
+                        deleteStudentCallback.onFailedToDeleteStudent();
+                    }
+                });
+            }
+
+            @Override
+            public void onFailedToDeleteStudent() {
+                deleteStudentCallback.onFailedToDeleteStudent();
+            }
+        });
     }
 
     @Override
-    public void updateStudentDetails(@NonNull Student student, @NonNull UpdateStudentCallback updateStudentCallback) {
+    public void updateStudentDetails(@NonNull final Student student, @NonNull final UpdateStudentCallback updateStudentCallback) {
 
+        mStudentLocalDataSource.updateStudentDetails(student, new UpdateStudentCallback() {
+            @Override
+            public void onStudentDetailsUpdatedSuccessfully() {
+                mStudentRemoteDataSource.updateStudentDetails(student, new UpdateStudentCallback() {
+                    @Override
+                    public void onStudentDetailsUpdatedSuccessfully() {
+
+                        // Do in memory cache update to keep the app UI up to date
+                        if (mCachedStudents == null)
+                            mCachedStudents = new LinkedHashMap<>();
+
+                        mCachedStudents.put(student.getId(), student);
+
+                        updateStudentCallback.onStudentDetailsUpdatedSuccessfully();
+                    }
+
+                    @Override
+                    public void onFailedToUpdateStudentDetails() {
+                        updateStudentCallback.onFailedToUpdateStudentDetails();
+                    }
+                });
+            }
+
+            @Override
+            public void onFailedToUpdateStudentDetails() {
+                updateStudentCallback.onFailedToUpdateStudentDetails();
+            }
+        });
     }
 
     @Override
     public void refreshStudents() {
-
+        mCacheIsDirty = true;
     }
 
-    private void getStudentsFromRemoteDataSource(LoadStudentsCallback loadStudentsCallback) {
+    private void getStudentsFromRemoteDataSource(final LoadStudentsCallback loadStudentsCallback) {
+        mStudentRemoteDataSource.getStudents(new LoadStudentsCallback() {
+            @Override
+            public void onStudentsLoaded(List<Student> students) {
+                refreshCache(students);
+                refreshLocalDataSource(students);
 
+                loadStudentsCallback.onStudentsLoaded(students);
+            }
+
+            @Override
+            public void onDataNotAvailable() {
+                loadStudentsCallback.onDataNotAvailable();
+            }
+        });
     }
 
     private void refreshCache(List<Student> students) {
+        if (mCachedStudents == null)
+            mCachedStudents = new LinkedHashMap<>();
 
+        mCachedStudents.clear();
+
+        for (Student student :
+                students) {
+            mCachedStudents.put(student.getId(), student);
+        }
+        mCacheIsDirty = false;
     }
 
-    private void refreshLocalDataSource(List<Student> students) {
+    private void refreshLocalDataSource(final List<Student> students) {
+        mStudentLocalDataSource.deleteAllStudent(new DeleteAllStudentCallback() {
+            @Override
+            public void onAllStudentDeletedSuccessfully() {
+            }
 
+            @Override
+            public void onFailedToDeleteAllStudent() {
+            }
+        });
+
+        for (Student student : students) {
+            mStudentLocalDataSource.saveStudent(student, new SaveStudentCallback() {
+                @Override
+                public void onStudentSavedSuccessfully() {
+
+                }
+
+                @Override
+                public void onFailedToSaveStudent() {
+
+                }
+            });
+        }
     }
 
     @Nullable
     private Student getStudentWithId(String studentId) {
-        return null;
+        checkNotNull(studentId);
+        if (mCachedStudents == null || mCachedStudents.isEmpty())
+            return null;
+        else
+            return mCachedStudents.get(studentId);
     }
 }
